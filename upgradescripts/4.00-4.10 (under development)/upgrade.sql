@@ -954,10 +954,10 @@ set @resources='
     <Value>View all results...</Value>
   </LocaleResource>
   <LocaleResource Name="Admin.Configuration.Settings.Catalog.ShowLinkToAllResultInSearchAutoComplete">
-    <Value>Show link to all result search in autocomplete box</Value>
+    <Value>Show a link to all search results in the autocomplete box</Value>
   </LocaleResource>
   <LocaleResource Name="Admin.Configuration.Settings.Catalog.ShowLinkToAllResultInSearchAutoComplete.Hint">
-    <Value>Determines whether link to all result should be displayed in the autocomplete search box. Displayed if the number of items found is greater than the displayed quantity in autocomplete box.</Value>
+    <Value>Determines whether the link to all results should be displayed in the autocomplete search box. Displayed if the number of items found is greater than the displayed quantity in the autocomplete box.</Value>
   </LocaleResource>
 </Language>
 '
