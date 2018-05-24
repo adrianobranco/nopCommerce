@@ -11,8 +11,8 @@ namespace Nop.Web.Framework.Validators
     /// <summary>
     /// Base class for validators
     /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public abstract class BaseNopValidator<T> : AbstractValidator<T> where T : class
+    /// <typeparam name="TModel">Model type</typeparam>
+    public abstract class BaseNopValidator<TModel> : AbstractValidator<TModel> where TModel : class
     {
         /// <summary>
         /// Ctor
@@ -34,61 +34,67 @@ namespace Nop.Web.Framework.Validators
         /// <summary>
         /// Sets validation rule(s) to appropriate database model
         /// </summary>
-        /// <typeparam name="TObject">Object type</typeparam>
+        /// <typeparam name="TEntity">Entity type</typeparam>
         /// <param name="dbContext">Database context</param>
         /// <param name="filterStringPropertyNames">Properties to skip</param>
-        protected virtual void SetDatabaseValidationRules<TObject>(IDbContext dbContext, params string[] filterStringPropertyNames)
+        protected virtual void SetDatabaseValidationRules<TEntity>(IDbContext dbContext, params string[] filterStringPropertyNames)
         {
-            SetStringPropertiesMaxLength<TObject>(dbContext, filterStringPropertyNames);
-            SetDecimalMaxValue<TObject>(dbContext);
+            SetStringPropertiesMaxLength<TEntity>(dbContext, filterStringPropertyNames);
+            SetDecimalMaxValue<TEntity>(dbContext);
         }
 
         /// <summary>
         /// Sets length validation rule(s) to string properties according to appropriate database model
         /// </summary>
-        /// <typeparam name="TObject">Object type</typeparam>
+        /// <typeparam name="TEntity">Entity type</typeparam>
         /// <param name="dbContext">Database context</param>
         /// <param name="filterPropertyNames">Properties to skip</param>
-        protected virtual void SetStringPropertiesMaxLength<TObject>(IDbContext dbContext, params string[] filterPropertyNames)
+        protected virtual void SetStringPropertiesMaxLength<TEntity>(IDbContext dbContext, params string[] filterPropertyNames)
         {
             if (dbContext == null)
                 return;
-
-            var dbObjectType = typeof(TObject);
-
-            var names = typeof(T).GetProperties()
+            
+            //get max length of the string properties
+            var names = typeof(TModel).GetProperties()
                 .Where(p => p.PropertyType == typeof(string) && !filterPropertyNames.Contains(p.Name))
-                .Select(p => p.Name).ToArray();
+                .Select(p => p.Name).ToList();
+            var propertyMaxLengths = dbContext.GetColumnsMaxLength<TEntity>()
+                .Where(property => names.Contains(property.Key) && property.Value.HasValue);
 
-            var maxLength = dbContext.GetColumnsMaxLength(dbObjectType.Name, names);
-            var expression = maxLength.Keys.ToDictionary(name => name, name => DynamicExpressionParser.ParseLambda<T, string>(null, false, name));
-
-            foreach (var expr in expression)
+            //create expressions for the validation rules
+            var maxLengthExpressions = propertyMaxLengths.Select(property => new
             {
-                RuleFor(expr.Value).Length(0, maxLength[expr.Key]);
+                MaxLength = property.Value.Value,
+                Expression = DynamicExpressionParser.ParseLambda<TModel, string>(null, false, property.Key)
+            });
+
+            //define validation rules
+            foreach (var expression in maxLengthExpressions)
+            {
+                RuleFor(expression.Expression).Length(0, expression.MaxLength);
             }
         }
 
         /// <summary>
         /// Sets max value validation rule(s) to decimal properties according to appropriate database model
         /// </summary>
-        /// <typeparam name="TObject">Object type</typeparam>
+        /// <typeparam name="TEntity">Entity type</typeparam>
         /// <param name="dbContext">Database context</param>
-        protected virtual void SetDecimalMaxValue<TObject>(IDbContext dbContext)
+        protected virtual void SetDecimalMaxValue<TEntity>(IDbContext dbContext)
         {
             var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
 
             if (dbContext == null)
                 return;
 
-            var dbObjectType = typeof(TObject);
+            var dbObjectType = typeof(TEntity);
 
-            var names = typeof(T).GetProperties()
+            var names = typeof(TModel).GetProperties()
                 .Where(p => p.PropertyType == typeof(decimal))
                 .Select(p => p.Name).ToArray();
 
             var maxValues = dbContext.GetDecimalMaxValue(dbObjectType.Name, names);
-            var expression = maxValues.Keys.ToDictionary(name => name, name => DynamicExpressionParser.ParseLambda<T, decimal>(null, false, name));
+            var expression = maxValues.Keys.ToDictionary(name => name, name => DynamicExpressionParser.ParseLambda<TModel, decimal>(null, false, name));
 
             foreach (var expr in expression)
             {

@@ -103,36 +103,6 @@ namespace Nop.Data.Extensions
             return commands;
         }
 
-#if EF6
-        private static Dictionary<string, ReadOnlyMetadataCollection<Facet>> GetFieldFacets(this IDbContext context,
-            string entityTypeName, string edmTypeName, params string[] columnNames)
-        {
-            //original: http://stackoverflow.com/questions/5081109/entity-framework-4-0-automatically-truncate-trim-string-before-insert
-
-            var entType = Type.GetType(entityTypeName);
-            var adapter = ((IObjectContextAdapter)context).ObjectContext;
-            var metadataWorkspace = adapter.MetadataWorkspace;
-            var q = from meta in metadataWorkspace.GetItems(DataSpace.CSpace).Where(m => m.BuiltInTypeKind == BuiltInTypeKind.EntityType)
-                    from p in (meta as EntityType).Properties.Where(p => columnNames.Contains(p.Name) && p.TypeUsage.EdmType.Name == edmTypeName)
-                    select p;
-
-            var queryResult = q.Where(p =>
-            {
-                var match = p.DeclaringType.Name == entityTypeName;
-                if (!match && entType != null)
-                {
-                    //Is a fully qualified name....
-                    match = entType.Name == p.DeclaringType.Name;
-                }
-
-                return match;
-
-            }).ToDictionary(p => p.Name, p => p.TypeUsage.Facets);
-
-            return queryResult;
-        }
-#endif
-
         #endregion
 
         #region Methods
@@ -195,42 +165,16 @@ namespace Nop.Data.Extensions
         }
 
         /// <summary>
-        /// Get column maximum length
+        /// Gets the maximum lengths of data that is allowed for the entity properties
         /// </summary>
-        /// <param name="context">Context</param>
-        /// <param name="entityTypeName">Entity type name</param>
-        /// <param name="columnName">Column name</param>
-        /// <returns>Maximum length. Null if such rule does not exist</returns>
-        public static int? GetColumnMaxLength(this IDbContext context, string entityTypeName, string columnName)
+        /// <typeparam name="TEntity">Entity type</typeparam>
+        /// <param name="context">Database context</param>
+        /// <returns>Collection of name-max length pairs</returns>
+        public static IDictionary<string, int?> GetColumnsMaxLength<TEntity>(this IDbContext context)
         {
-            var rez = GetColumnsMaxLength(context, entityTypeName, columnName);
-            return rez.ContainsKey(columnName) ? rez[columnName] as int? : null;
+            var entityType = CastOrThrow(context).Model.FindEntityType(typeof(TEntity));
+            return entityType.GetProperties().ToDictionary(property => property.Name, property => property.GetMaxLength());
         }
-
-        /// <summary>
-        /// Get columns maximum length
-        /// </summary>
-        /// <param name="context">Context</param>
-        /// <param name="entityTypeName">Entity type name</param>
-        /// <param name="columnNames">Column names</param>
-        /// <returns></returns>
-        public static IDictionary<string, int> GetColumnsMaxLength(this IDbContext context, string entityTypeName, params string[] columnNames)
-        {
-#if EF6
-            var fieldFacets = GetFieldFacets(context, entityTypeName, "String", columnNames);
-
-            var queryResult = fieldFacets
-                .Select(f => new { Name = f.Key, MaxLength = f.Value["MaxLength"].Value })
-                .Where(p => int.TryParse(p.MaxLength.ToString(), out int _))
-                .ToDictionary(p => p.Name, p => Convert.ToInt32(p.MaxLength));
-
-            return queryResult;
-#else
-            //TODO .NET Core doesn't support access to this information, that's why we return empty data
-            return new Dictionary<string, int>();
-#endif
-        }
-
 
         /// <summary>
         /// Get maximum decimal values
