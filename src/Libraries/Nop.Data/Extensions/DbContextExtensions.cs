@@ -6,6 +6,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Storage;
 using Nop.Core;
 
 namespace Nop.Data.Extensions
@@ -179,21 +181,21 @@ namespace Nop.Data.Extensions
         /// <summary>
         /// Get maximum decimal values
         /// </summary>
-        /// <param name="context">Context</param>
-        /// <param name="entityTypeName">Entity type name</param>
-        /// <param name="columnNames">Column names</param>
-        /// <returns></returns>
-        public static IDictionary<string, decimal> GetDecimalMaxValue(this IDbContext context, string entityTypeName, params string[] columnNames)
+        /// <typeparam name="TEntity">Entity type</typeparam>
+        /// <param name="context">Database context</param>
+        /// <returns>Collection of name-max decimal value pairs</returns>
+        public static IDictionary<string, decimal?> GetDecimalColumnsMaxValue<TEntity>(this IDbContext context)
         {
-#if EF6
-            var fieldFacets = GetFieldFacets(context, entityTypeName, "Decimal", columnNames);
+            var entityType = CastOrThrow(context).Model.FindEntityType(typeof(TEntity));
+            var properties = entityType.GetProperties().Where(property => property.ClrType == typeof(decimal));
+            return properties.ToDictionary(property => property.Name, property =>
+            {
+                var mapping = new RelationalTypeMappingInfo(property);
+                if (!mapping.Precision.HasValue || !mapping.Scale.HasValue)
+                    return null;
 
-            return fieldFacets.ToDictionary(p => p.Key, p => int.Parse(p.Value["Precision"].Value.ToString()) - int.Parse(p.Value["Scale"].Value.ToString()))
-                .ToDictionary(p => p.Key, p => new decimal(Math.Pow(10, p.Value)));
-#else
-            //TODO .NET Core doesn't support access to this information, that's why we return empty data
-            return new Dictionary<string, decimal>();
-#endif
+                return new decimal?((decimal)Math.Pow(10, mapping.Precision.Value - mapping.Scale.Value));
+            });
         }
 
         /// <summary>

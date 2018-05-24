@@ -14,21 +14,22 @@ namespace Nop.Web.Framework.Validators
     /// <typeparam name="TModel">Model type</typeparam>
     public abstract class BaseNopValidator<TModel> : AbstractValidator<TModel> where TModel : class
     {
-        /// <summary>
-        /// Ctor
-        /// </summary>
+        #region Ctor
+
         protected BaseNopValidator()
         {
             PostInitialize();
         }
 
+        #endregion
+
+        #region Utilities
+
         /// <summary>
-        /// Developers can override this method in custom partial classes
-        /// in order to add some custom initialization code to constructors
+        /// Developers can override this method in custom partial classes in order to add some custom initialization code to constructors
         /// </summary>
         protected virtual void PostInitialize()
         {
-
         }
 
         /// <summary>
@@ -82,24 +83,32 @@ namespace Nop.Web.Framework.Validators
         /// <param name="dbContext">Database context</param>
         protected virtual void SetDecimalMaxValue<TEntity>(IDbContext dbContext)
         {
-            var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
-
             if (dbContext == null)
                 return;
 
-            var dbObjectType = typeof(TEntity);
-
+            //get max value of the decimal properties
             var names = typeof(TModel).GetProperties()
                 .Where(p => p.PropertyType == typeof(decimal))
-                .Select(p => p.Name).ToArray();
+                .Select(p => p.Name).ToList();
+            var decimalPropertyMaxValues = dbContext.GetDecimalColumnsMaxValue<TEntity>()
+                .Where(property => names.Contains(property.Key) && property.Value.HasValue);
 
-            var maxValues = dbContext.GetDecimalMaxValue(dbObjectType.Name, names);
-            var expression = maxValues.Keys.ToDictionary(name => name, name => DynamicExpressionParser.ParseLambda<TModel, decimal>(null, false, name));
-
-            foreach (var expr in expression)
+            //create expressions for the validation rules
+            var maxValueExpressions = decimalPropertyMaxValues.Select(property => new
             {
-                RuleFor(expr.Value).IsDecimal(maxValues[expr.Key]).WithMessage(string.Format(localizationService.GetResource("Nop.Web.Framework.Validators.MaxDecimal"), maxValues[expr.Key] - 1));
+                MaxValue = property.Value.Value,
+                Expression = DynamicExpressionParser.ParseLambda<TModel, decimal>(null, false, property.Key)
+            });
+
+            //define validation rules
+            var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
+            foreach (var expression in maxValueExpressions)
+            {
+                RuleFor(expression.Expression).IsDecimal(expression.MaxValue)
+                    .WithMessage(string.Format(localizationService.GetResource("Nop.Web.Framework.Validators.MaxDecimal"), expression.MaxValue - 1));
             }
         }
+
+        #endregion
     }
 }
